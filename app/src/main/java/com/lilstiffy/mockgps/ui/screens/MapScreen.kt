@@ -2,27 +2,12 @@ package com.lilstiffy.mockgps.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.List
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.*
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,12 +18,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.MapStyleOptions
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
-import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.*
 import com.lilstiffy.mockgps.MainActivity
 import com.lilstiffy.mockgps.R
 import com.lilstiffy.mockgps.extensions.roundedShadow
@@ -56,10 +36,11 @@ import kotlinx.coroutines.launch
 fun MapScreen(
     mapViewModel: MapViewModel = viewModel(),
     activity: MainActivity,
+    isMocking: Boolean,
+    onMockingToggle: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
 
-    var isMocking by remember { mutableStateOf(false) }
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(mapViewModel.markerPosition.value, 15f)
     }
@@ -125,7 +106,6 @@ fun MapScreen(
                     .roundedShadow(32.dp)
                     .zIndex(32f),
                 onSearch = { searchTerm ->
-                    // We don't want to support switching locations while already mocking
                     if (isMocking) {
                         Toast.makeText(
                             activity,
@@ -144,7 +124,6 @@ fun MapScreen(
                 }
             )
 
-            // Favorites button.
             IconButton(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)
@@ -173,7 +152,7 @@ fun MapScreen(
             latLng = mapViewModel.markerPosition.value,
             isMocking = isMocking,
             isFavorite = mapViewModel.markerPositionIsFavorite.value,
-            onStart = { isMocking = activity.toggleMocking() },
+            onStart = { onMockingToggle() },
             onFavorite = { mapViewModel.toggleFavoriteForLocation() }
         )
 
@@ -204,6 +183,5 @@ fun MapScreen(
                 }
             )
         }
-
     }
 }

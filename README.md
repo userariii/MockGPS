@@ -8,6 +8,7 @@ This Android app allows users to mock their device's location, providing a conve
 
 - **Mock Location:** Set a custom latitude and longitude to simulate the device's location.
 - **Real-Time Updates:** Update the mock location in real-time for dynamic testing scenarios.
+- **Foreground Mode:** Keeps the app alive by starting in Foreground mode, removing it from the recent apps screen while running.
 - **Permissions:** Ensure that the app has the necessary location-related permissions to function correctly.
 - **Easy-to-Use Interface:** Simple user interface.
 

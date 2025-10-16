@@ -19,7 +19,10 @@ class LocationMocker(context: Context) {
     }
 
     private var isMocking = false
-    lateinit var latLng: LatLng
+
+    // Initialize latLng with a default location (latitude=0.0, longitude=0.0)
+    var latLng: LatLng = LatLng(0.0, 0.0)
+
     var listener: LocationListener? = null
 
     fun toggleMocking() {
@@ -31,7 +34,7 @@ class LocationMocker(context: Context) {
 
     @SuppressLint("MissingPermission")
     private fun startMockingLocation() {
-        //Permission already checked before hand.
+        // Permission already checked beforehand.
         listener?.let {
             locationManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
@@ -85,7 +88,7 @@ class LocationMocker(context: Context) {
     private suspend fun mockLocation() {
         while (isMocking) {
             val mockLocation = Location(LocationManager.GPS_PROVIDER).apply {
-                // Set your mock coordinates here
+                // Use latLng, now always initialized
                 latitude = latLng.latitude
                 longitude = latLng.longitude
                 time = Date().time
