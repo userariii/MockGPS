@@ -25,6 +25,6 @@ This Android app allows users to mock their device's location, providing a conve
    ```bash
    git clone https://github.com/userariii/MockGps.git
 
-### Screenshots (Dark / Light)
+### Screenshots
 
-<img src="demo_image.png" width="50%"><img src="demo_image_light.png" width="50%">
+<img src="Start_Mocking.png" width="50%"><img src="Stop_Mocking.png" width="50%">

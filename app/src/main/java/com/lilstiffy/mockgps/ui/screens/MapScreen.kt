@@ -1,7 +1,7 @@
 package com.lilstiffy.mockgps.ui.screens
 
+import android.app.Activity
 import android.widget.Toast
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.List
@@ -11,16 +11,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.maps.android.compose.*
 import com.lilstiffy.mockgps.MainActivity
-import com.lilstiffy.mockgps.R
 import com.lilstiffy.mockgps.extensions.roundedShadow
 import com.lilstiffy.mockgps.service.LocationHelper
 import com.lilstiffy.mockgps.storage.StorageManager
@@ -41,17 +41,20 @@ fun MapScreen(
 ) {
     val scope = rememberCoroutineScope()
 
+    // Edge-to-edge with dark status bar icons; keep bar transparent so map is truly full-screen
+    val view = LocalView.current
+    SideEffect {
+        val window = (view.context as Activity).window
+        WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
+        window.statusBarColor = Color.Transparent.toArgb()
+    }
+
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(mapViewModel.markerPosition.value, 15f)
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showBottomSheet by remember { mutableStateOf(false) }
-
-    val MapStyle = if (isSystemInDarkTheme())
-        MapStyleOptions.loadRawResourceStyle(LocalContext.current, R.raw.style_json)
-    else
-        MapStyleOptions("")
 
     fun animateCamera() {
         scope.launch(Dispatchers.Main) {
@@ -65,7 +68,7 @@ fun MapScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Google maps
+        // Google Map (kept in light mode by not providing a dark style)
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             onMapLoaded = {
@@ -73,7 +76,7 @@ fun MapScreen(
                 mapViewModel.updateMarkerPosition(mapViewModel.markerPosition.value)
             },
             properties = MapProperties(
-                mapStyleOptions = MapStyle
+                mapStyleOptions = null // default light map
             ),
             uiSettings = MapUiSettings(
                 tiltGesturesEnabled = false,
@@ -158,9 +161,7 @@ fun MapScreen(
 
         if (showBottomSheet) {
             FavoritesListComponent(
-                onDismissRequest = {
-                    showBottomSheet = false
-                },
+                onDismissRequest = { showBottomSheet = false },
                 sheetState = sheetState,
                 data = StorageManager.favorites,
                 onEntryClicked = { clickedEntry ->
