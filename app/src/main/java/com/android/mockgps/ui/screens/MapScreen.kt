@@ -103,9 +103,9 @@ fun MapScreen(
             SearchComponent(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .fillMaxHeight(0.075f)
+                    .fillMaxHeight(0.080f)
                     .fillMaxWidth()
-                    .padding(4.dp)
+                    .padding(horizontal = 65.dp, vertical = 7.dp)
                     .roundedShadow(32.dp)
                     .zIndex(32f),
                 onSearch = { searchTerm ->
@@ -129,11 +129,11 @@ fun MapScreen(
 
             IconButton(
                 modifier = Modifier
-                    .padding(horizontal = 12.dp)
+                    .padding(horizontal = 15.dp)
                     .align(Alignment.End),
                 onClick = { showBottomSheet = true },
                 colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = Color.Blue, contentColor = Color.White
+                    containerColor = Color.Black, contentColor = Color.White
                 )
             ) {
                 Icon(
@@ -146,9 +146,10 @@ fun MapScreen(
         FooterComponent(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(1f)
+                .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(4.dp)
+                .heightIn(max = 225.dp)
+                .padding(horizontal = 50.dp, vertical = 10.dp)
                 .zIndex(32f)
                 .roundedShadow(16.dp),
             address = mapViewModel.address.value,
