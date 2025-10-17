@@ -1,10 +1,5 @@
 # MockGPS App for Android
 
-### All support is greatly appreciated
-https://buymeacoffee.com/lilstiffy
-
-### Feel free to request features in order to make the app even better!
-
 ## Overview
 
 This Android app allows users to mock their device's location, providing a convenient way to simulate different geographic locations. It can be useful for testing location-based features in various applications or for other scenarios where mock location data is required.
@@ -27,7 +22,7 @@ This Android app allows users to mock their device's location, providing a conve
 
 1. Clone the repository or download the APK file.
    ```bash
-   git clone https://github.com/lilstiffy/mock-location-app.git
+   git clone https://github.com/userariii/MockGps.git
 
 ### Screenshots (Dark / Light)
 
