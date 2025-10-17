@@ -34,4 +34,4 @@
 # Optional. For using GSON @Expose annotation
 -keepattributes AnnotationDefault,RuntimeVisibleAnnotations
 
--keep class com.lilstiffy.mockgps.ui.models.** { *; }
+-keep class com.android.mockgps.ui.models.** { *; }
