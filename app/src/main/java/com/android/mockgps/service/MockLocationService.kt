@@ -66,9 +66,30 @@ class MockLocationService : Service() {
         wakeLock?.acquire()
 
         createNotificationChannel()
+
+        // Load the last saved location so updates don't start at 0.0,0.0
+        loadLastLocationFromStorage()
+
         // Initial (idle) notification shows Start action
         startForeground(NOTIFICATION_ID, buildNotification("Service ready", isRunning = false))
         notifyStateChanged(false)
+    }
+
+    // Load the last saved location from StorageManager; fallback to DEFAULT_LOCATION
+    private fun loadLastLocationFromStorage() {
+        try {
+            val lastLocation = StorageManager.getLatestLocation()
+            if (lastLocation.latitude != 0.0 || lastLocation.longitude != 0.0) {
+                latLng = lastLocation
+                Log.d(TAG, "Loaded last location from storage: ${latLng.latitude}, ${latLng.longitude}")
+            } else {
+                latLng = LocationHelper.DEFAULT_LOCATION
+                Log.d(TAG, "No valid location in storage, using default: ${latLng.latitude}, ${latLng.longitude}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading location from storage, using default", e)
+            latLng = LocationHelper.DEFAULT_LOCATION
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -77,7 +98,11 @@ class MockLocationService : Service() {
                 if (latLng.latitude != 0.0 || latLng.longitude != 0.0) {
                     startMockingLocation()
                 } else {
-                    Log.w(TAG, "Attempted to start mocking, but latLng not set")
+                    Log.w(TAG, "Attempted to start mocking, but latLng not set; trying to recover")
+                    loadLastLocationFromStorage()
+                    if (latLng.latitude != 0.0 || latLng.longitude != 0.0) {
+                        startMockingLocation()
+                    }
                 }
             }
             ACTION_STOP_MOCKING -> stopMockingLocation()
@@ -170,6 +195,19 @@ class MockLocationService : Service() {
     @SuppressLint("MissingPermission")
     private fun startMockingLocation() {
         if (isMocking) return
+
+        // Safety: prevent mocking with invalid coordinates
+        if (latLng.latitude == 0.0 && latLng.longitude == 0.0) {
+            Log.w(TAG, "Attempting to mock with 0.0,0.0 - trying to recover from storage")
+            val recoveredLocation = StorageManager.getLatestLocation()
+            latLng = if (recoveredLocation.latitude != 0.0 || recoveredLocation.longitude != 0.0) {
+                Log.d(TAG, "Recovered location from storage: ${recoveredLocation.latitude}, ${recoveredLocation.longitude}")
+                recoveredLocation
+            } else {
+                Log.w(TAG, "No valid location found, using default")
+                LocationHelper.DEFAULT_LOCATION
+            }
+        }
 
         // Ensure test provider is available BEFORE flipping to running state
         if (!addTestProvider()) {
