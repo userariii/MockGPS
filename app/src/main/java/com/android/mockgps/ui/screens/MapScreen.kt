@@ -23,6 +23,7 @@ import com.google.maps.android.compose.*
 import com.android.mockgps.MainActivity
 import com.android.mockgps.extensions.roundedShadow
 import com.android.mockgps.service.LocationHelper
+import com.android.mockgps.service.MockLocationService
 import com.android.mockgps.storage.StorageManager
 import com.android.mockgps.ui.components.FavoritesListComponent
 import com.android.mockgps.ui.components.FooterComponent
@@ -67,7 +68,18 @@ fun MapScreen(
         }
     }
 
+    // Sync UI to the running service on bind/reopen so marker reflects the live mocked position
+    LaunchedEffect(isMocking) {
+        MockLocationService.instance?.latLng?.let { live ->
+            if (live != mapViewModel.markerPosition.value) {
+                mapViewModel.updateMarkerPosition(live)
+                animateCamera()
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
+
         // Google Map (kept in light mode by not providing a dark style)
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
@@ -85,10 +97,9 @@ fun MapScreen(
                 mapToolbarEnabled = false,
                 compassEnabled = false
             ),
+            // Allow changing target even while mocking; service loop will pick up new lat/lng
             onMapClick = { latLng ->
-                if (!isMocking) {
-                    mapViewModel.updateMarkerPosition(latLng)
-                }
+                mapViewModel.updateMarkerPosition(latLng)
             },
             cameraPositionState = cameraPositionState
         ) {
@@ -109,19 +120,13 @@ fun MapScreen(
                     .roundedShadow(32.dp)
                     .zIndex(32f),
                 onSearch = { searchTerm ->
-                    if (isMocking) {
-                        Toast.makeText(
-                            activity,
-                            "You can't search while mocking location",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        return@SearchComponent
-                    }
-
+                    // Allow search while mocking; update service lat/lng via ViewModel
                     LocationHelper.geocoding(searchTerm) { foundLatLng ->
                         foundLatLng?.let {
                             mapViewModel.updateMarkerPosition(it)
                             animateCamera()
+                        } ?: run {
+                            Toast.makeText(activity, "Location not found", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -166,16 +171,9 @@ fun MapScreen(
                 sheetState = sheetState,
                 data = StorageManager.favorites,
                 onEntryClicked = { clickedEntry ->
-                    if (isMocking) {
-                        Toast.makeText(
-                            activity,
-                            "You can't switch location while mocking",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        return@FavoritesListComponent
-                    }
+                    // Allow switching to favorite while mocking
                     mapViewModel.apply {
-                        mapViewModel.updateMarkerPosition(clickedEntry.latLng)
+                        updateMarkerPosition(clickedEntry.latLng)
                         scope.launch {
                             sheetState.hide()
                             showBottomSheet = false

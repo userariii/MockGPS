@@ -38,7 +38,6 @@ class MainActivity : ComponentActivity() {
 
     private var isBound = false
     private val PERMISSION_REQUEST_CODE = 69
-
     var isMockingUIState by mutableStateOf(false)
         private set
 
@@ -47,6 +46,7 @@ class MainActivity : ComponentActivity() {
             val binder = service as MockLocationService.MockLocationBinder
             mockLocationService = binder.getService()
             isBound = true
+            // Sync UI mocking flag to reflect the running service
             isMockingUIState = mockLocationService?.isMocking ?: false
         }
 
@@ -87,6 +87,7 @@ class MainActivity : ComponentActivity() {
         ) {
             permsToRequest.add(FOREGROUND_SERVICE_LOCATION)
         }
+
         if (permsToRequest.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, permsToRequest.toTypedArray(), PERMISSION_REQUEST_CODE)
         } else {
@@ -108,7 +109,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-
         setContent {
             MockGpsTheme {
                 Surface(
@@ -126,13 +126,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-
         requestMissingPermissions()
     }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
-        permissions: Array<String>,
+        permissions: Array<out String>,
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)

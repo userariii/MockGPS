@@ -12,8 +12,14 @@ import com.android.mockgps.storage.StorageManager
 import com.android.mockgps.ui.models.LocationEntry
 
 class MapViewModel : ViewModel() {
-    var markerPosition: MutableState<LatLng> = mutableStateOf(StorageManager.getLatestLocation())
+
+    var markerPosition: MutableState<LatLng> =
+        mutableStateOf(
+            // Prefer the live mocked position if service is running, else last stored
+            MockLocationService.instance?.latLng ?: StorageManager.getLatestLocation()
+        )
         private set
+
     var address: MutableState<Address?> = mutableStateOf(null)
         private set
 
@@ -21,12 +27,11 @@ class MapViewModel : ViewModel() {
 
     fun updateMarkerPosition(latLng: LatLng) {
         markerPosition.value = latLng
+        // Always keep service in sync so mocking switches immediately
         MockLocationService.instance?.latLng = latLng
-
         LocationHelper.reverseGeocoding(latLng) { foundAddress ->
             address.value = foundAddress
         }
-
         checkIfFavorite()
     }
 
@@ -46,5 +51,4 @@ class MapViewModel : ViewModel() {
             addressLine = address.value?.displayString()
         )
     }
-
 }
