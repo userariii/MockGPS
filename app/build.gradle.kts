@@ -21,7 +21,7 @@ android {
         minSdk = 28
         targetSdk = 34
         versionCode = 5
-        versionName = "1.0.4"
+        versionName = "1.0.5"
 
         manifestPlaceholders["API_KEY"] = props.getProperty("MAPS_API_KEY") ?: ""
 
