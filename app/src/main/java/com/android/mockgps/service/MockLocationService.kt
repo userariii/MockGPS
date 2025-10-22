@@ -29,6 +29,9 @@ import com.android.mockgps.storage.StorageManager
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -38,13 +41,14 @@ class MockLocationService : Service() {
         const val TAG = "MockLocationService"
         const val NOTIFICATION_ID = 1001
         const val CHANNEL_ID = "MockLocationChannel"
-
         const val ACTION_START_MOCKING = "com.android.mockgps.START_MOCKING"
-        const val ACTION_STOP_MOCKING  = "com.android.mockgps.STOP_MOCKING"
-
-        // In-app state change broadcast
+        const val ACTION_STOP_MOCKING = "com.android.mockgps.STOP_MOCKING"
         const val ACTION_MOCK_STATE_CHANGED = "com.android.mockgps.MOCK_STATE_CHANGED"
         const val EXTRA_IS_MOCKING = "isMocking"
+
+        // Update interval for mock location (in milliseconds)
+        // Set to 1 second to ensure continuous mocking even during device sleep
+        private const val MOCK_UPDATE_INTERVAL = 1000L
 
         var instance: MockLocationService? = null
     }
@@ -53,7 +57,11 @@ class MockLocationService : Service() {
         private set
 
     var latLng: LatLng = LatLng(0.0, 0.0)
+
     private var wakeLock: PowerManager.WakeLock? = null
+
+    // Coroutine job for continuous location mocking
+    private var mockingJob: Job? = null
 
     private val locationManager by lazy {
         getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -64,13 +72,19 @@ class MockLocationService : Service() {
         instance = this
         Log.d(TAG, "Service created")
 
+        // Acquire wake lock with indefinite timeout to keep CPU awake
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$TAG::WakeLock")
-        wakeLock?.acquire()
+        wakeLock = pm.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "$TAG::WakeLock"
+        ).apply {
+            // Use acquire() without timeout for continuous operation
+            // The wake lock will be released only when service is destroyed
+            acquire()
+            Log.d(TAG, "WakeLock acquired")
+        }
 
         createNotificationChannel()
-
-        // Load the last saved location so updates don't start at 0.0,0.0
         loadLastLocationFromStorage()
 
         // Initial (idle) notification shows Start action
@@ -78,7 +92,6 @@ class MockLocationService : Service() {
         notifyStateChanged(false)
     }
 
-    // Load the last saved location from StorageManager; fallback to DEFAULT_LOCATION
     private fun loadLastLocationFromStorage() {
         try {
             val lastLocation = StorageManager.getLatestLocation()
@@ -116,8 +129,17 @@ class MockLocationService : Service() {
     override fun onBind(intent: Intent?): IBinder = MockLocationBinder()
 
     override fun onDestroy() {
-        stopMockingLocation() // will also notify state
-        wakeLock?.takeIf { it.isHeld }?.release()
+        stopMockingLocation()
+
+        // Release wake lock when service is destroyed
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+                Log.d(TAG, "WakeLock released")
+            }
+        }
+        wakeLock = null
+
         super.onDestroy()
         instance = null
         Log.d(TAG, "Service destroyed")
@@ -139,7 +161,6 @@ class MockLocationService : Service() {
         }
     }
 
-    // Build a notification that toggles Start/Stop action based on isRunning
     private fun buildNotification(text: String, isRunning: Boolean): Notification {
         val mainIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -167,9 +188,7 @@ class MockLocationService : Service() {
             else PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // Large icon to make the card look bigger in the shade
         val largeIcon = BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
-
         val bigText = NotificationCompat.BigTextStyle()
             .setBigContentTitle("Mock GPS active")
             .bigText(text)
@@ -198,7 +217,10 @@ class MockLocationService : Service() {
     @OptIn(DelicateCoroutinesApi::class)
     @SuppressLint("MissingPermission")
     private fun startMockingLocation() {
-        if (isMocking) return
+        if (isMocking) {
+            Log.d(TAG, "Already mocking, ignoring start request")
+            return
+        }
 
         // Safety: prevent mocking with invalid coordinates
         if (latLng.latitude == 0.0 && latLng.longitude == 0.0) {
@@ -226,6 +248,7 @@ class MockLocationService : Service() {
         try {
             locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
         } catch (se: SecurityException) {
+            Log.e(TAG, "SecurityException enabling test provider", se)
             stopMockingLocation()
             return
         }
@@ -233,13 +256,15 @@ class MockLocationService : Service() {
         StorageManager.addLocationToHistory(latLng)
         isMocking = true
 
-        // First show a quick status, then update to resolved address
+        // Show initial status
         getSystemService(NotificationManager::class.java).notify(
             NOTIFICATION_ID, buildNotification("Resolving address…", isRunning = true)
         )
 
-        GlobalScope.launch(Dispatchers.IO) { setMockLocationOnce(latLng) }
+        // Start continuous location mocking loop
+        startContinuousMocking()
 
+        // Resolve and display address
         GlobalScope.launch(Dispatchers.IO) {
             val addressText = resolveAddress(latLng.latitude, latLng.longitude)
             GlobalScope.launch(Dispatchers.Main) {
@@ -250,16 +275,54 @@ class MockLocationService : Service() {
         }
 
         notifyStateChanged(true)
-        Log.d(TAG, "Mock location started")
+        Log.d(TAG, "Mock location started with continuous updates every ${MOCK_UPDATE_INTERVAL}ms")
+    }
+
+    /**
+     * Starts a coroutine that continuously updates the mock location
+     * This ensures the location remains mocked even when device sleeps
+     */
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun startContinuousMocking() {
+        // Cancel any existing job
+        mockingJob?.cancel()
+
+        mockingJob = GlobalScope.launch(Dispatchers.IO) {
+            Log.d(TAG, "Continuous mocking loop started")
+
+            while (isActive && isMocking) {
+                try {
+                    setMockLocation(latLng)
+                    delay(MOCK_UPDATE_INTERVAL)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in continuous mocking loop", e)
+                    // Continue the loop even if there's an error
+                    delay(MOCK_UPDATE_INTERVAL)
+                }
+            }
+
+            Log.d(TAG, "Continuous mocking loop stopped")
+        }
     }
 
     private fun stopMockingLocation() {
         if (isMocking) {
             isMocking = false
+
+            // Cancel the continuous mocking job
+            mockingJob?.cancel()
+            mockingJob = null
+
             getSystemService(NotificationManager::class.java).notify(
                 NOTIFICATION_ID, buildNotification("Service ready", isRunning = false)
             )
-            try { locationManager.removeTestProvider(LocationManager.GPS_PROVIDER) } catch (_: Exception) { }
+
+            try {
+                locationManager.removeTestProvider(LocationManager.GPS_PROVIDER)
+            } catch (_: Exception) {
+                Log.w(TAG, "Error removing test provider (may not exist)")
+            }
+
             notifyStateChanged(false)
             Log.d(TAG, "Mock location stopped")
         } else {
@@ -291,20 +354,35 @@ class MockLocationService : Service() {
         }
     }
 
+    /**
+     * Sets the mock location for GPS provider
+     * This method is called continuously to maintain the mock location
+     */
     @SuppressLint("MissingPermission")
-    private fun setMockLocationOnce(target: LatLng) {
-        val loc = Location(LocationManager.GPS_PROVIDER).apply {
-            latitude = target.latitude
-            longitude = target.longitude
-            altitude = 12.5
-            time = System.currentTimeMillis()
-            accuracy = 2f
-            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+    private fun setMockLocation(target: LatLng) {
+        try {
+            val loc = Location(LocationManager.GPS_PROVIDER).apply {
+                latitude = target.latitude
+                longitude = target.longitude
+                altitude = 12.5
+                time = System.currentTimeMillis()
+                accuracy = 2f
+                elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+
+                // Set additional properties for better mock location accuracy
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    verticalAccuracyMeters = 2f
+                    speedAccuracyMetersPerSecond = 0.1f
+                    bearingAccuracyDegrees = 5f
+                }
+            }
+
+            locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting mock location", e)
         }
-        locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc)
     }
 
-    // Reverse geocode to an address string (fallback to "lat, lng" if not available)
     private fun resolveAddress(lat: Double, lng: Double): String {
         return try {
             val geocoder = Geocoder(this, Locale.getDefault())
@@ -321,7 +399,6 @@ class MockLocationService : Service() {
         }
     }
 
-    // Emit in-app broadcast so Activity can update UI
     private fun notifyStateChanged(isRunning: Boolean) {
         val intent = Intent(ACTION_MOCK_STATE_CHANGED)
             .setPackage(packageName)
