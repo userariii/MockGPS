@@ -1,5 +1,6 @@
 package com.android.mockgps.ui.components
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -43,6 +44,7 @@ fun FavoritesListComponent(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight()
                 .padding(horizontal = 8.dp)
         ) {
             // Title
@@ -70,11 +72,19 @@ fun FavoritesListComponent(
                     }
                 }
             } else {
-                Text(
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                    text = "No favorites have been added",
-                    textAlign = TextAlign.Center
-                )
+                // Center the empty state in the remaining space
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No favorites have been added",
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
             }
         }
     }
