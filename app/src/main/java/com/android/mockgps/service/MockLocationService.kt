@@ -8,6 +8,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
+import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
 import android.location.provider.ProviderProperties
@@ -28,6 +30,7 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class MockLocationService : Service() {
 
@@ -148,10 +151,7 @@ class MockLocationService : Service() {
             else PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // Start action (when idle)
-        val startIntent = Intent(this, MockLocationService::class.java).apply {
-            action = ACTION_START_MOCKING
-        }
+        val startIntent = Intent(this, MockLocationService::class.java).apply { action = ACTION_START_MOCKING }
         val startPI = PendingIntent.getService(
             this, 100, startIntent,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
@@ -159,10 +159,7 @@ class MockLocationService : Service() {
             else PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // Stop action (when running)
-        val stopIntent = Intent(this, MockLocationService::class.java).apply {
-            action = ACTION_STOP_MOCKING
-        }
+        val stopIntent = Intent(this, MockLocationService::class.java).apply { action = ACTION_STOP_MOCKING }
         val stopPI = PendingIntent.getService(
             this, 101, stopIntent,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
@@ -170,19 +167,26 @@ class MockLocationService : Service() {
             else PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        // Large icon to make the card look bigger in the shade
+        val largeIcon = BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
+
+        val bigText = NotificationCompat.BigTextStyle()
+            .setBigContentTitle("Mock GPS active")
+            .bigText(text)
+            .setSummaryText("Foreground service")
+
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Mock GPS")
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.mipmap.ic_launcher_monochrome)
+            .setLargeIcon(largeIcon)
+            .setStyle(bigText)
             .setContentIntent(mainPI)
             .setOngoing(true)
             .setSilent(true)
 
-        if (isRunning) {
-            builder.addAction(android.R.drawable.ic_media_pause, "Stop", stopPI)
-        } else {
-            builder.addAction(android.R.drawable.ic_media_play, "Start", startPI)
-        }
+        if (isRunning) builder.addAction(android.R.drawable.ic_media_pause, "Stop", stopPI)
+        else builder.addAction(android.R.drawable.ic_media_play, "Start", startPI)
 
         return builder.build()
     }
@@ -211,8 +215,6 @@ class MockLocationService : Service() {
 
         // Ensure test provider is available BEFORE flipping to running state
         if (!addTestProvider()) {
-            // Not selected as mock app (SecurityException handled in addTestProvider)
-            // Keep service idle and reflect correct UI/notification state
             getSystemService(NotificationManager::class.java).notify(
                 NOTIFICATION_ID, buildNotification("Service ready", isRunning = false)
             )
@@ -221,7 +223,6 @@ class MockLocationService : Service() {
             return
         }
 
-        // Enable provider; if this throws, immediately stop and stay idle
         try {
             locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
         } catch (se: SecurityException) {
@@ -231,11 +232,23 @@ class MockLocationService : Service() {
 
         StorageManager.addLocationToHistory(latLng)
         isMocking = true
+
+        // First show a quick status, then update to resolved address
         getSystemService(NotificationManager::class.java).notify(
-            NOTIFICATION_ID,
-            buildNotification("Mocking ${latLng.latitude}, ${latLng.longitude}", isRunning = true)
+            NOTIFICATION_ID, buildNotification("Resolving address…", isRunning = true)
         )
-        GlobalScope.launch(Dispatchers.IO) { mockLocationLoop() }
+
+        GlobalScope.launch(Dispatchers.IO) { setMockLocationOnce(latLng) }
+
+        GlobalScope.launch(Dispatchers.IO) {
+            val addressText = resolveAddress(latLng.latitude, latLng.longitude)
+            GlobalScope.launch(Dispatchers.Main) {
+                getSystemService(NotificationManager::class.java).notify(
+                    NOTIFICATION_ID, buildNotification(addressText, isRunning = true)
+                )
+            }
+        }
+
         notifyStateChanged(true)
         Log.d(TAG, "Mock location started")
     }
@@ -244,19 +257,14 @@ class MockLocationService : Service() {
         if (isMocking) {
             isMocking = false
             getSystemService(NotificationManager::class.java).notify(
-                NOTIFICATION_ID,
-                buildNotification("Service ready", isRunning = false)
+                NOTIFICATION_ID, buildNotification("Service ready", isRunning = false)
             )
-            try {
-                locationManager.removeTestProvider(LocationManager.GPS_PROVIDER)
-            } catch (_: Exception) { }
+            try { locationManager.removeTestProvider(LocationManager.GPS_PROVIDER) } catch (_: Exception) { }
             notifyStateChanged(false)
             Log.d(TAG, "Mock location stopped")
         } else {
-            // Even if not in running state, keep notification/UI consistent
             getSystemService(NotificationManager::class.java).notify(
-                NOTIFICATION_ID,
-                buildNotification("Service ready", isRunning = false)
+                NOTIFICATION_ID, buildNotification("Service ready", isRunning = false)
             )
             notifyStateChanged(false)
         }
@@ -274,42 +282,49 @@ class MockLocationService : Service() {
             )
             return true
         } catch (se: SecurityException) {
-            // This happens when the app is not selected as the mock-location app in Developer Options
             val ctx = MockGpsApp.shared.applicationContext
             GlobalScope.launch(Dispatchers.Main) {
-                Toast.makeText(
-                    ctx,
-                    "Set this app as your mock location app",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(ctx, "Set this app as your mock location app", Toast.LENGTH_SHORT).show()
             }
-            // Ensure we immediately stop and keep UI/notification idle
             stopMockingLocation()
             return false
         }
     }
 
-    private suspend fun mockLocationLoop() {
-        // Provider was added/enabled in startMockingLocation()
-        while (isMocking) {
-            val loc = Location(LocationManager.GPS_PROVIDER).apply {
-                latitude = latLng.latitude
-                longitude = latLng.longitude
-                altitude = 12.5
-                time = System.currentTimeMillis()
-                accuracy = 2f
-                elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-            }
-            // Will throw SecurityException if not selected as mock app; loop ends when isMocking=false
-            locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc)
-            kotlinx.coroutines.delay(200L)
+    @SuppressLint("MissingPermission")
+    private fun setMockLocationOnce(target: LatLng) {
+        val loc = Location(LocationManager.GPS_PROVIDER).apply {
+            latitude = target.latitude
+            longitude = target.longitude
+            altitude = 12.5
+            time = System.currentTimeMillis()
+            accuracy = 2f
+            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+        }
+        locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc)
+    }
+
+    // Reverse geocode to an address string (fallback to "lat, lng" if not available)
+    private fun resolveAddress(lat: Double, lng: Double): String {
+        return try {
+            val geocoder = Geocoder(this, Locale.getDefault())
+            val list = geocoder.getFromLocation(lat, lng, 1)
+            if (!list.isNullOrEmpty()) {
+                val a = list[0]
+                listOfNotNull(
+                    a.thoroughfare, a.subLocality, a.locality,
+                    a.adminArea, a.postalCode, a.countryName
+                ).joinToString(", ")
+            } else String.format(Locale.US, "%.6f, %.6f", lat, lng)
+        } catch (e: Exception) {
+            String.format(Locale.US, "%.6f, %.6f", lat, lng)
         }
     }
 
     // Emit in-app broadcast so Activity can update UI
     private fun notifyStateChanged(isRunning: Boolean) {
         val intent = Intent(ACTION_MOCK_STATE_CHANGED)
-            .setPackage(packageName) // keep it in-app
+            .setPackage(packageName)
             .putExtra(EXTRA_IS_MOCKING, isRunning)
         sendBroadcast(intent)
     }
