@@ -175,15 +175,24 @@ class MainActivity : ComponentActivity() {
 
     fun toggleMocking(): Boolean {
         if (isBound && hasAllPermissions()) {
+            // Compare before/after to decide which toast to show
+            val wasMocking = mockLocationService?.isMocking == true
             mockLocationService?.toggleMocking()
-            if (mockLocationService?.isMocking == true) {
+            val isNowMocking = mockLocationService?.isMocking == true
+
+            return if (!wasMocking && isNowMocking) {
                 Toast.makeText(this, "Mocking location...", Toast.LENGTH_SHORT).show()
                 VibratorService.vibrate()
-                return true
-            } else {
+                true
+            } else if (wasMocking && !isNowMocking) {
+                // Only show when there was a real transition from running -> idle
                 Toast.makeText(this, "Stopped mocking location...", Toast.LENGTH_SHORT).show()
                 VibratorService.vibrate()
-                return false
+                false
+            } else {
+                // Start attempt failed (e.g., not selected as mock app), or no state change.
+                // Do NOT show “Stopped...”. Service already shows the guidance toast.
+                false
             }
         } else if (!isBound && hasAllPermissions()) {
             Toast.makeText(this, "Service not bound", Toast.LENGTH_SHORT).show()

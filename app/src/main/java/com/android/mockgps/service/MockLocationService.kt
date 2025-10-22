@@ -169,17 +169,37 @@ class MockLocationService : Service() {
     @OptIn(DelicateCoroutinesApi::class)
     @SuppressLint("MissingPermission")
     private fun startMockingLocation() {
-        if (!isMocking) {
-            StorageManager.addLocationToHistory(latLng)
-            isMocking = true
+        if (isMocking) return
+
+        // Ensure test provider is available BEFORE flipping to running state
+        if (!addTestProvider()) {
+            // Not selected as mock app (SecurityException handled in addTestProvider)
+            // Keep service idle and reflect correct UI/notification state
             getSystemService(NotificationManager::class.java).notify(
-                NOTIFICATION_ID,
-                buildNotification("Mocking ${latLng.latitude}, ${latLng.longitude}", isRunning = true)
+                NOTIFICATION_ID, buildNotification("Service ready", isRunning = false)
             )
-            GlobalScope.launch(Dispatchers.IO) { mockLocationLoop() }
-            notifyStateChanged(true)
-            Log.d(TAG, "Mock location started")
+            notifyStateChanged(false)
+            Log.w(TAG, "Cannot start mocking: mock provider not allowed (select app in Developer Options)")
+            return
         }
+
+        // Enable provider; if this throws, immediately stop and stay idle
+        try {
+            locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        } catch (se: SecurityException) {
+            stopMockingLocation()
+            return
+        }
+
+        StorageManager.addLocationToHistory(latLng)
+        isMocking = true
+        getSystemService(NotificationManager::class.java).notify(
+            NOTIFICATION_ID,
+            buildNotification("Mocking ${latLng.latitude}, ${latLng.longitude}", isRunning = true)
+        )
+        GlobalScope.launch(Dispatchers.IO) { mockLocationLoop() }
+        notifyStateChanged(true)
+        Log.d(TAG, "Mock location started")
     }
 
     private fun stopMockingLocation() {
@@ -194,6 +214,13 @@ class MockLocationService : Service() {
             } catch (_: Exception) { }
             notifyStateChanged(false)
             Log.d(TAG, "Mock location stopped")
+        } else {
+            // Even if not in running state, keep notification/UI consistent
+            getSystemService(NotificationManager::class.java).notify(
+                NOTIFICATION_ID,
+                buildNotification("Service ready", isRunning = false)
+            )
+            notifyStateChanged(false)
         }
     }
 
@@ -209,6 +236,7 @@ class MockLocationService : Service() {
             )
             return true
         } catch (se: SecurityException) {
+            // This happens when the app is not selected as the mock-location app in Developer Options
             val ctx = MockGpsApp.shared.applicationContext
             GlobalScope.launch(Dispatchers.Main) {
                 Toast.makeText(
@@ -217,13 +245,14 @@ class MockLocationService : Service() {
                     Toast.LENGTH_SHORT
                 ).show()
             }
+            // Ensure we immediately stop and keep UI/notification idle
+            stopMockingLocation()
             return false
         }
     }
 
     private suspend fun mockLocationLoop() {
-        if (!addTestProvider()) return
-        locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        // Provider was added/enabled in startMockingLocation()
         while (isMocking) {
             val loc = Location(LocationManager.GPS_PROVIDER).apply {
                 latitude = latLng.latitude
@@ -233,6 +262,7 @@ class MockLocationService : Service() {
                 accuracy = 2f
                 elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
             }
+            // Will throw SecurityException if not selected as mock app; loop ends when isMocking=false
             locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc)
             kotlinx.coroutines.delay(200L)
         }
