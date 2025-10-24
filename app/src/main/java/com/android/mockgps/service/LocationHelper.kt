@@ -16,7 +16,7 @@ import com.android.mockgps.MockGpsApp
 object LocationHelper {
     private const val REQUEST_CODE = 69
     private const val NOTIF_REQUEST_CODE = 70
-    val DEFAULT_LOCATION = LatLng(19.027663, 73.022646)
+    val DEFAULT_LOCATION = LatLng(28.6427, 77.112837)
     fun requestPermissions(activity: ComponentActivity) {
         val perms = mutableListOf(
             ACCESS_FINE_LOCATION,

@@ -3,7 +3,6 @@ package com.android.mockgps.ui.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,32 +46,35 @@ fun FavoritesListComponent(
                 .fillMaxHeight()
                 .padding(horizontal = 8.dp)
         ) {
-            // Title
-            Text(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                text = "Favorite locations",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            // Centered Title
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "My favorite places",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+            }
 
-            // List view
             if (data.isNotEmpty()) {
                 LazyColumn(
                     contentPadding = PaddingValues(8.dp),
                     userScrollEnabled = true
                 ) {
                     items(data) {
-                        Row {
-                            FavoriteListItem(
-                                locationEntry = it,
-                                onClick = { onEntryClicked(it) }
-                            )
-                        }
+                        FavoriteListItem(
+                            locationEntry = it,
+                            onClick = { onEntryClicked(it) }
+                        )
                     }
                 }
             } else {
-                // Center the empty state in the remaining space
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
