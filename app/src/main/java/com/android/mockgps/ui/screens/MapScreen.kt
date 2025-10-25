@@ -51,26 +51,35 @@ fun MapScreen(
 ) {
     val scope = rememberCoroutineScope()
     val view = LocalView.current
-
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(mapViewModel.markerPosition.value, 15f)
     }
 
     val favoritesSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showFavoritesSheet by remember { mutableStateOf(false) }
-
     val appearanceSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showAppearanceSheet by remember { mutableStateOf(false) }
-
     val menuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showMenuSheet by remember { mutableStateOf(false) }
 
     val mapTypeOptions: List<Pair<MapType, String>> = remember {
         listOf(MapType.NORMAL to "Default", MapType.HYBRID to "Satellite")
     }
-    var currentMapType by remember { mutableStateOf(MapType.NORMAL) }
-    var showTraffic by remember { mutableStateOf(false) }
-    var darkMode by remember { mutableStateOf(false) }
+
+    // Load saved preferences instead of hardcoded defaults
+    var currentMapType by remember {
+        mutableStateOf(
+            when (StorageManager.savedMapType) {
+                "HYBRID" -> MapType.HYBRID
+                "SATELLITE" -> MapType.SATELLITE
+                "TERRAIN" -> MapType.TERRAIN
+                else -> MapType.NORMAL
+            }
+        )
+    }
+    var showTraffic by remember { mutableStateOf(StorageManager.savedShowTraffic) }
+    var darkMode by remember { mutableStateOf(StorageManager.savedDarkMode) }
+
     var mapTypeDropdownExpanded by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -80,8 +89,7 @@ fun MapScreen(
         } else null
     }
 
-    val scrim = BottomSheetDefaults.ScrimColor // Material scrim color [web:39]
-
+    val scrim = BottomSheetDefaults.ScrimColor
     // Exclude Favorites from dim (per your spec)
     val shouldDim by remember(
         showAppearanceSheet, showMenuSheet, mapTypeDropdownExpanded
@@ -94,10 +102,10 @@ fun MapScreen(
     val currentShouldDim by rememberUpdatedState(shouldDim)
     val currentMapIsDark by rememberUpdatedState(mapIsDark)
 
-    // Edge‑to‑edge with transparent status bar; overlay supplies dim
+    // Edge-to-edge with transparent status bar; overlay supplies dim
     SideEffect {
         val window = (view.context as Activity).window
-        WindowCompat.setDecorFitsSystemWindows(window, false) // edge‑to‑edge [web:8]
+        WindowCompat.setDecorFitsSystemWindows(window, false) // edge-to-edge
         window.statusBarColor = Color.Transparent.toArgb()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isStatusBarContrastEnforced = false
@@ -130,7 +138,6 @@ fun MapScreen(
     val bottomInsetPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Box(modifier = Modifier.fillMaxSize()) {
-
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             onMapLoaded = {
@@ -175,7 +182,6 @@ fun MapScreen(
                     }
                 }
             )
-
             IconButton(
                 modifier = Modifier
                     .padding(horizontal = 15.dp)
@@ -211,7 +217,7 @@ fun MapScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(scrim) // uniform dim [web:39]
+                    .background(scrim) // uniform dim
                     .zIndex(16f)
             )
         }
@@ -237,7 +243,6 @@ fun MapScreen(
                 windowInsets = BottomSheetDefaults.windowInsets
             ) {
                 SheetEdgeToEdge(lightStatusBarIcons = false)
-
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -255,7 +260,6 @@ fun MapScreen(
                                 }
                             }
                     )
-
                     ListItem(
                         headlineContent = { Text("Favorites") },
                         leadingContent = { Icon(Icons.Filled.Star, contentDescription = null) },
@@ -268,7 +272,6 @@ fun MapScreen(
                                 }
                             }
                     )
-
                     Spacer(Modifier.height(12.dp))
                 }
             }
@@ -300,7 +303,6 @@ fun MapScreen(
                 windowInsets = BottomSheetDefaults.windowInsets
             ) {
                 SheetEdgeToEdge(lightStatusBarIcons = false)
-
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -311,33 +313,47 @@ fun MapScreen(
                         options = mapTypeOptions,
                         onSelect = { type ->
                             currentMapType = type
-                            if (type != MapType.NORMAL) darkMode = false
+                            // Save preference when map type changes
+                            StorageManager.savedMapType = type.name
+                            if (type != MapType.NORMAL) {
+                                darkMode = false
+                                StorageManager.savedDarkMode = false
+                            }
                         },
                         onExpandedChange = { expanded -> mapTypeDropdownExpanded = expanded }
                     )
-
                     Spacer(Modifier.height(12.dp))
-
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Traffic", modifier = Modifier.weight(1f))
-                        Switch(checked = showTraffic, onCheckedChange = { showTraffic = it })
+                        Switch(
+                            checked = showTraffic,
+                            onCheckedChange = {
+                                showTraffic = it
+                                // Save preference when traffic toggle changes
+                                StorageManager.savedShowTraffic = it
+                            }
+                        )
                     }
-
                     Spacer(Modifier.height(8.dp))
-
                     if (currentMapType == MapType.NORMAL) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Dark mode", modifier = Modifier.weight(1f))
-                            Switch(checked = darkMode, onCheckedChange = { darkMode = it })
+                            Switch(
+                                checked = darkMode,
+                                onCheckedChange = {
+                                    darkMode = it
+                                    // Save preference when dark mode toggle changes
+                                    StorageManager.savedDarkMode = it
+                                }
+                            )
                         }
                     }
-
                     Spacer(Modifier.height(16.dp))
                 }
             }
@@ -355,6 +371,7 @@ private fun MapTypeDropdown(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val currentLabel = options.firstOrNull { it.first == current }?.second ?: current.name
+
     ExposedDropdownMenuBox(
         expanded = expanded,
         onExpandedChange = {
@@ -408,7 +425,7 @@ private fun SheetEdgeToEdge(
             parent = parent.parent
         }
         window?.let { w ->
-            WindowCompat.setDecorFitsSystemWindows(w, false) // dialog edge‑to‑edge [web:6]
+            WindowCompat.setDecorFitsSystemWindows(w, false) // dialog edge-to-edge
             w.statusBarColor = Color.Transparent.toArgb()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 w.isStatusBarContrastEnforced = false

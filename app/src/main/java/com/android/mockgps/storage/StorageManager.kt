@@ -15,6 +15,11 @@ object StorageManager {
     private const val KEY_HISTORY = "history"
     private const val KEY_FAVORITES = "favorites"
 
+    // Preference keys for UI settings
+    private const val KEY_MAP_TYPE = "map_type"
+    private const val KEY_DARK_MODE = "dark_mode"
+    private const val KEY_SHOW_TRAFFIC = "show_traffic"
+
     private lateinit var pref: SharedPreferences
 
     fun initialise(context: Context) {
@@ -84,4 +89,31 @@ object StorageManager {
             }
         }
 
+    // Map appearance preferences
+    var savedMapType: String
+        get() = pref.getString(KEY_MAP_TYPE, "NORMAL") ?: "NORMAL"
+        set(value) {
+            pref.edit {
+                putString(KEY_MAP_TYPE, value)
+                apply()
+            }
+        }
+
+    var savedDarkMode: Boolean
+        get() = pref.getBoolean(KEY_DARK_MODE, false)
+        set(value) {
+            pref.edit {
+                putBoolean(KEY_DARK_MODE, value)
+                apply()
+            }
+        }
+
+    var savedShowTraffic: Boolean
+        get() = pref.getBoolean(KEY_SHOW_TRAFFIC, false)
+        set(value) {
+            pref.edit {
+                putBoolean(KEY_SHOW_TRAFFIC, value)
+                apply()
+            }
+        }
 }
