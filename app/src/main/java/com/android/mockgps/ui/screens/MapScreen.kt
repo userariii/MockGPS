@@ -134,9 +134,6 @@ fun MapScreen(
         }
     }
 
-    // Compute bottom inset height once per composition for the bottom overlay bar
-    val bottomInsetPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-
     Box(modifier = Modifier.fillMaxSize()) {
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
@@ -217,36 +214,25 @@ fun MapScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(scrim) // uniform dim
+                    .background(scrim)
                     .zIndex(16f)
             )
         }
 
-        // NEW: Bottom-cover overlay bar (solid black) to cover the map strip below the sheet
-        if (shouldDim) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(bottomInsetPadding + 28.dp) // inset + small buffer to sit over logo area
-                    .background(Color.Black) // opaque black as requested
-                    .zIndex(17f)
-            )
-        }
-
-        // MENU SHEET — pops from bottom (no extra spacing)
+        // MENU SHEET — extends to bottom naturally
         if (showMenuSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showMenuSheet = false },
                 sheetState = menuSheetState,
                 scrimColor = Color.Transparent,
-                windowInsets = BottomSheetDefaults.windowInsets
+                windowInsets = WindowInsets(0)
             ) {
                 SheetEdgeToEdge(lightStatusBarIcons = false)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .navigationBarsPadding()
                 ) {
                     ListItem(
                         headlineContent = { Text("Appearance") },
@@ -294,19 +280,20 @@ fun MapScreen(
             )
         }
 
-        // APPEARANCE SHEET — pops from bottom (no extra spacing)
+        // APPEARANCE SHEET — extends to bottom naturally
         if (showAppearanceSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showAppearanceSheet = false },
                 sheetState = appearanceSheetState,
                 scrimColor = Color.Transparent,
-                windowInsets = BottomSheetDefaults.windowInsets
+                windowInsets = WindowInsets(0)
             ) {
                 SheetEdgeToEdge(lightStatusBarIcons = false)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .navigationBarsPadding()
                 ) {
                     MapTypeDropdown(
                         current = currentMapType,
